@@ -1,0 +1,126 @@
+---
+title: "NEWS Data Set Cross Validation"
+author: "Kavish Tyagi"
+date: "January 31, 2019"
+output: word_document
+---
+
+
+
+## Cross Validation data Test Model
+
+
+```{r}
+library(lime)
+library(xgboost) # the classifier
+library(text2vec) # used to build the BoW matrix
+library(plyr)
+library(magrittr)
+library(lattice)
+library(ggplot2)
+library(caret)
+```
+
+
+##Read the data set
+```{r}
+df = read.csv("articles1.csv")
+```
+
+##Summary of the Data Set
+```{r}
+colnames(df)
+```
+```{r}
+unique(df$publication)
+```
+```{r}
+table(df$publication)
+```
+
+
+
+##Split the data set in 75-25 train test split
+
+```{r}
+smp_size <- floor(0.75 * nrow(df))
+df_attempt1 = df[(c(10,4))] # subsetting the data set by selecting "Post.Text" and "Blog.ID"
+```
+
+
+## set the seed to make your partition reproducible
+
+```{r}
+set.seed(123)
+train_ind <- sample(seq_len(nrow(df_attempt1)), size = smp_size)
+```
+## Creating another colunms to make Blog ID as factor of level 1-10
+```{r}
+df_attempt1$publication_lab = factor(df_attempt1$publication, 
+                                 levels = unique(df_attempt1$publication),
+                                 labels = c(0,1,2,3,4))
+
+train <- df_attempt1[train_ind, ]#Training data set 
+test <- df_attempt1[-train_ind, ]#Test data set
+```
+
+##Labels subsetted to another data frame
+```{r}
+train_labs <- as.numeric(train$publication_lab)-1  
+test_labs <- as.numeric(test$publication_lab)-1
+```
+
+## Tokenization of the text data
+```{r}
+get_matrix = function(content) {
+  it <- itoken(content, progressbar = FALSE)
+  create_dtm(it, vectorizer = hash_vectorizer())
+}
+
+dtm_test = get_matrix(as.character(test$content))
+dtm_train = get_matrix(as.character(train$content))
+```
+
+## Cross validation model 
+```{r}
+xgb_train = xgb.DMatrix(data = dtm_train, label = train_labs)
+xgb_test = xgb.DMatrix(data = dtm_test, label = test_labs)
+param <- list( booster = "gbtree",
+               objective = "multi:softprob",
+               num_class = 5,
+               eval_metric = "mlogloss")
+
+xgb_model <- xgb.cv(params = param , data = xgb_train,showsd = TRUE,
+                    nrounds = 10, 
+                    nfold = 6, 
+                    stratified = TRUE,
+                    print_every_n = 1,
+                    early_stop_round = 5, 
+                    maximize = FALSE, 
+                    prediction = TRUE
+                    )
+
+xgb_test_model <- xgb.train(params = param, data = xgb_train, nrounds = 1)
+```
+
+## Predict for validation set
+
+```{r}
+xgb_val_preds <- predict(xgb_test_model, newdata = xgb_test, type = "prob")
+
+xgb_val_out <-  data.frame(t(matrix(xgb_val_preds, nrow = 5, ncol = length(xgb_val_preds) / 5))) %>%
+  mutate(max = max.col(., ties.method = "last"), label = test_labs + 1) 
+```
+
+## Confustion Matrix
+```{r}
+xgb_val_conf <- table(true = test_labs + 1, pred = xgb_val_out$max)
+
+cat("XGB Validation Classification Error Rate:", (xgb_val_conf), "\n")
+
+xgb_val_conf2 <- confusionMatrix(factor(xgb_val_out$label),
+                                 factor(xgb_val_out$max),
+                                 mode = "everything")
+print(xgb_val_conf2)
+```
+

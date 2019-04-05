@@ -1,0 +1,307 @@
+---
+title: "NEWS - LIME Implementation"
+author: "Kavish Tyagi"
+date: "January 31, 2019"
+output: word_document
+---
+
+## XGBoost Test Model without stop words
+```{r}
+library(lime)
+library(xgboost) # the classifier
+library(text2vec) # used to build the BoW matrix
+library(plyr)
+library(magrittr)
+library(lattice)
+library(ggplot2)
+library(caret)
+library(stopwords)
+library(tm)
+library(tidyr)
+
+```
+
+```{r}
+df = read.csv("articles1.csv")
+```
+
+## Preprocessing Data
+
+```{r}
+df$content = as.character(df$content) 
+news_all = as.vector(df$content)
+length(news_all)
+
+news_corpus = VCorpus(VectorSource(news_all))
+stop_total = (stopwords("en"))
+corpus_clean =  news_corpus %>% 
+                tm_map (tolower) %>% 
+                tm_map (removeWords, stop_total) %>%
+                tm_map (removeNumbers)  %>%
+                tm_map (stripWhitespace) %>% 
+                tm_map (PlainTextDocument) 
+
+df_news = data.frame(text=unlist(sapply(corpus_clean, `[`, "content")), 
+                     stringsAsFactors=F)
+
+news_clean = df %>% mutate(clean_news = df_news$text)
+
+new_df = news_clean[(c(11,4))]
+```
+
+##Split Data
+
+```{r}
+smp_size <- floor(0.80 * nrow(new_df))
+set.seed(321)
+train_news <- sample(seq_len(nrow(new_df)), size = smp_size)
+```
+## Creating another colunms to make Blog ID as factor of level 1-5
+
+```{r}
+new_df$publication_lab = factor(new_df$publication, 
+                                     levels = unique(new_df$publication),
+                                     labels = c(0,1,2,3,4))
+
+train_data <- new_df[train_news, ]#Training data set 
+test_data <- new_df[-train_news, ]#Test data set
+
+
+get_matrix = function(text.1) {
+  it <- itoken(text.1, progressbar = FALSE)
+  create_dtm(it, vectorizer = hash_vectorizer())
+}
+dtm_test = get_matrix(as.character(test_data$clean_news))
+```
+
+## XGB model for "New York Times" 
+
+```{r}
+dtm_train = get_matrix(as.character(train_data$clean_news))
+
+param <- list(max_depth = 7, 
+              eta = 0.1, 
+              objective = "binary:logistic", 
+              eval_metric = "error", 
+              nthread = 1)
+xgb_model <- xgb.train(param, 
+                       xgb.DMatrix(dtm_train, label = (train_data$publication == "New York Times")),
+                       nrounds = 50)
+```
+## We use a (standard) threshold of 0.5
+
+```{r}
+predictions <- predict(xgb_model, dtm_test) > 0.5
+test_labels <- test_data$publication == "New York Times"
+
+
+```
+## Accuracy
+
+```{r}
+print(mean(predictions == test_labels))
+```
+# We select sentences from the label "New York Times"
+
+```{r}
+sentence_to_explain <- head(test_data[test_labels,]$clean_news,10)
+explainer <- lime(sentence_to_explain, model = xgb_model, 
+                  preprocess = get_matrix)
+explanation <- explain(sentence_to_explain, explainer, n_labels = 1, 
+                       n_features = 5)
+```
+# Another more graphical view of the same information (2 first sentences only)
+
+```{r}
+plot_features(explanation)
+```
+```{r}
+plot_text_explanations(explanation)
+```
+
+
+## XGB model for "Atlantic" 
+
+```{r}
+dtm_train = get_matrix(as.character(train_data$clean_news))
+
+param <- list(max_depth = 7, 
+              eta = 0.1, 
+              objective = "binary:logistic", 
+              eval_metric = "error", 
+              nthread = 1)
+xgb_model <- xgb.train(param, 
+                       xgb.DMatrix(dtm_train, label = (train_data$publication == "Atlantic")),
+                       nrounds = 50)
+```
+## We use a (standard) threshold of 0.5
+
+```{r}
+predictions <- predict(xgb_model, dtm_test) > 0.5
+test_labels <- test_data$publication == "Atlantic"
+
+
+```
+## Accuracy
+
+```{r}
+print(mean(predictions == test_labels))
+```
+# We select sentences from the label "Atlantic"
+
+```{r}
+sentence_to_explain <- head(test_data[test_labels,]$clean_news,10)
+explainer <- lime(sentence_to_explain, model = xgb_model, 
+                  preprocess = get_matrix)
+explanation <- explain(sentence_to_explain, explainer, n_labels = 1, 
+                       n_features = 5)
+```
+# Another more graphical view of the same information (2 first sentences only)
+
+```{r}
+plot_features(explanation)
+```
+```{r}
+plot_text_explanations(explanation)
+```
+
+
+## XGB model for "Breitbart" 
+
+```{r}
+dtm_train = get_matrix(as.character(train_data$clean_news))
+
+param <- list(max_depth = 7, 
+              eta = 0.1, 
+              objective = "binary:logistic", 
+              eval_metric = "error", 
+              nthread = 1)
+xgb_model <- xgb.train(param, 
+                       xgb.DMatrix(dtm_train, label = (train_data$publication == "Breitbart")),
+                       nrounds = 50)
+```
+## We use a (standard) threshold of 0.5
+
+```{r}
+predictions <- predict(xgb_model, dtm_test) > 0.5
+test_labels <- test_data$publication == "Breitbart"
+
+
+```
+## Accuracy
+
+```{r}
+print(mean(predictions == test_labels))
+```
+# We select sentences from the label "Breitbart"
+
+```{r}
+sentence_to_explain <- head(test_data[test_labels,]$clean_news,10)
+explainer <- lime(sentence_to_explain, model = xgb_model, 
+                  preprocess = get_matrix)
+explanation <- explain(sentence_to_explain, explainer, n_labels = 1, 
+                       n_features = 5)
+```
+# Another more graphical view of the same information (2 first sentences only)
+
+```{r}
+plot_features(explanation)
+```
+```{r}
+plot_text_explanations(explanation)
+```
+
+
+
+## XGB model for "Business Insider" 
+
+```{r}
+dtm_train = get_matrix(as.character(train_data$clean_news))
+
+param <- list(max_depth = 7, 
+              eta = 0.1, 
+              objective = "binary:logistic", 
+              eval_metric = "error", 
+              nthread = 1)
+xgb_model <- xgb.train(param, 
+                       xgb.DMatrix(dtm_train, label = (train_data$publication == "Business Insider")),
+                       nrounds = 50)
+```
+## We use a (standard) threshold of 0.5
+
+```{r}
+predictions <- predict(xgb_model, dtm_test) > 0.5
+test_labels <- test_data$publication == "Business Insider"
+
+
+```
+## Accuracy
+
+```{r}
+print(mean(predictions == test_labels))
+```
+# We select sentences from the label "Business Insider"
+
+```{r}
+sentence_to_explain <- head(test_data[test_labels,]$clean_news,5)
+explainer <- lime(sentence_to_explain, model = xgb_model, 
+                  preprocess = get_matrix)
+explanation <- explain(sentence_to_explain, explainer, n_labels = 1, 
+                       n_features = 2)
+```
+# Another more graphical view of the same information (2 first sentences only)
+
+```{r}
+plot_features(explanation)
+```
+```{r}
+plot_text_explanations(explanation)
+```
+
+
+
+## XGB model for "CNN" 
+
+```{r}
+dtm_train = get_matrix(as.character(train_data$clean_news))
+
+param <- list(max_depth = 7, 
+              eta = 0.1, 
+              objective = "binary:logistic", 
+              eval_metric = "error", 
+              nthread = 1)
+xgb_model <- xgb.train(param, 
+                       xgb.DMatrix(dtm_train, label = (train_data$publication == "CNN")),
+                       nrounds = 50)
+```
+## We use a (standard) threshold of 0.5
+
+```{r}
+predictions <- predict(xgb_model, dtm_test) > 0.5
+test_labels <- test_data$publication == "CNN"
+
+
+```
+## Accuracy
+
+```{r}
+print(mean(predictions == test_labels))
+```
+# We select sentences from the label "CNN"
+
+```{r}
+sentence_to_explain <- head(test_data[test_labels,]$clean_news,10)
+explainer <- lime(sentence_to_explain, model = xgb_model, 
+                  preprocess = get_matrix)
+explanation <- explain(sentence_to_explain, explainer, n_labels = 1, 
+                       n_features = 5)
+```
+# Another more graphical view of the same information (2 first sentences only)
+
+```{r}
+plot_features(explanation)
+```
+```{r}
+plot_text_explanations(explanation)
+```
+

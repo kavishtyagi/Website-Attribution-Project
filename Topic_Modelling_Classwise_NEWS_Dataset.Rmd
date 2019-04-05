@@ -1,0 +1,114 @@
+---
+title: "NEWS Data set - Multiclass TF-IDF"
+author: "Kavish Tyagi"
+date: "February 1, 2019"
+output: word_document
+---
+
+##TF-IDF for News Data Set without stop word 
+
+```{r}
+library(lime)
+library(xgboost) # the classifier
+library(text2vec) # used to build the BoW matrix
+library(plyr)
+library(magrittr)
+library(lattice)
+library(ggplot2)
+library(caret)
+library(stopwords)
+library(tidyr)
+library(topicmodels)
+library(tm)
+library(tidytext)
+library(dplyr)
+
+```
+
+
+
+```{r}
+df = read.csv("articles1.csv")
+```
+
+## Preprocessing Data
+
+```{r}
+df$content = as.character(df$content) 
+news_all = as.vector(df$content)
+# length(news_all)
+# 
+news_corpus = VCorpus(VectorSource(news_all))
+
+# 
+# stop_total = (stopwords("en"))
+# corpus_clean =  news_corpus %>% 
+#   tm_map (tolower) %>% 
+#   tm_map (removeWords, stop_total) %>%
+#   tm_map (removeNumbers)  %>%
+#   tm_map (stripWhitespace) 
+# 
+df_news = data.frame(text=unlist(sapply(news_corpus, `[`, "content")),stringsAsFactors=F)
+# 
+news_clean = df %>% mutate(clean_news = df_news$text)
+
+new_df = news_clean[(c(11,4))]
+```
+
+
+```{r}
+topic_tfidf <- function(text_df, text_column, group_column)
+{
+  # name for the column we're going to unnest_tokens_ to
+  # (you only need to worry about enquo stuff if you're
+  # writing a function using using tidyverse packages)
+  group_column <- enquo(group_column)
+  text_column <- enquo(text_column)
+  
+  # get the count of each word in each review
+  words <- text_df %>%
+    unnest_tokens(word, !!text_column) %>%
+    count(!!group_column, word) %>% 
+    ungroup()
+  
+  # get the number of words per text
+  total_words <- words %>% 
+    group_by(!!group_column) %>% 
+    summarize(total = sum(n))
+  
+  # combine the two dataframes we just made
+  words <- left_join(words, total_words)
+  
+  # get the tf_idf & order the words by degree of relevence
+  tf_idf <- words %>%
+    bind_tf_idf(word, !!group_column, n) %>%
+    select(-total) %>%
+    arrange(desc(tf_idf)) %>%
+    mutate(word = factor(word, levels = rev(unique(word))))
+  
+  # return the entire tf_idf dataframe
+  return(tf_idf)
+}
+
+```
+
+```{r}
+text_tfidf_blogid <- topic_tfidf(text_df = new_df , 
+                                 text_column = clean_news, 
+                                 group = publication 
+)
+
+```
+## Plot
+
+```{r}
+text_tfidf_blogid  %>% 
+  group_by(publication) %>% 
+  top_n(5) %>% 
+  ungroup %>%
+  ggplot(aes(word, tf_idf, fill = publication)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "tf-idf") +
+  facet_wrap(~publication, ncol = 4, scales = "free" ) +
+  coord_flip()
+```
